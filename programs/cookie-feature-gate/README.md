@@ -29,13 +29,21 @@ Each instruction is one tag byte followed by one 32-byte public key. Builders ar
 
 ## Deployment on Cookie (plan step 4)
 
-1. Build: `cargo-build-sbf` (Agave 4.1.2 tools). Record the SHA-256 of `target/deploy/cookie_feature_gate.so`.
-2. Deploy with the program keypair `CookmMGfe9…` (kept offline), with a temporary deployer as upgrade authority.
-3. `Initialize` with `authority` = the Squads vault, signed by the temporary deployer.
-4. `solana program set-upgrade-authority CookmMGfe9… --new-upgrade-authority <Squads vault>`.
-5. Verify: config authority = Squads vault, upgrade authority = Squads vault, program hash matches the review.
+Authority (decided 20 October 2026): **vault 3 of the community multisig**.
 
-From then on, every activation is a Squads vault transaction containing one `Activate` instruction. The vault can be both authority and payer.
+| | Address |
+|---|---|
+| Community multisig (Squads v4, 6 of 12, signed at sig.cookiechain.wtf/community) | `BQVAdo6Ls2rYAggzXu38peyYg8BtQASUn6bnm9FfS5Ab` |
+| Vault 3: switch authority and upgrade authority | `AEMq4AZiGU2smZJX4Y3hqrSmAocGJzBAyvNDWSQeQ4Xe` |
+
+1. Fund vault 3 with about 1 COOK. Each activation costs about 0.00095 COOK of rent plus fees, and the vault pays.
+2. Build: `cargo-build-sbf` (Agave 4.1.2 tools). Check the SHA-256 of `target/deploy/cookie_feature_gate.so` matches the reviewed build.
+3. Deploy with the program keypair `CookmMGfe9…` (kept offline), with a temporary deployer as upgrade authority.
+4. `Initialize` with `authority` = `AEMq4AZiGU2smZJX4Y3hqrSmAocGJzBAyvNDWSQeQ4Xe`, signed by the temporary deployer.
+5. `solana program set-upgrade-authority CookmMGfe9ti8mrVkCFuZZsuAvjMSRagqh4t8Yxx4Ub4 --new-upgrade-authority AEMq4AZiGU2smZJX4Y3hqrSmAocGJzBAyvNDWSQeQ4Xe --skip-new-upgrade-authority-signer-check`.
+6. Verify: config authority = vault 3, upgrade authority = vault 3, program hash matches the review.
+
+From then on, every activation is a vault 3 transaction of the community multisig containing one or more `Activate` instructions. Vault 3 is both authority and payer. Signers approve and execute it at sig.cookiechain.wtf/community like any other proposal.
 
 ## Tests
 
