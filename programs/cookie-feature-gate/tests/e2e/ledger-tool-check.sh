@@ -13,6 +13,7 @@ LT="$REPO/dev-bins/target/debug/agave-ledger-tool"
 SO="$PROGRAM_DIR/target/deploy/cookie_feature_gate.so"
 F=B1ockRevenueSharing111111111111111111111111
 G=CustomCommissionCo11ector111111111111111111
+H=bn1hKNURMGQaQoEVxahcEAcqiX3NwRs6hgKKNSLeKxH
 RPC=http://127.0.0.1:8899
 [ -x "$TV" ] && [ -x "$LT" ] && [ -f "$SO" ] || { echo "build the test validator, ledger-tool and program first"; exit 2; }
 
@@ -20,11 +21,11 @@ W="$(mktemp -d)"
 trap 'kill $VPID 2>/dev/null; rm -rf "$W"' EXIT
 UA="$W/ua.json"
 solana-keygen new --no-bip39-passphrase --silent -o "$UA" >/dev/null
-"$TV" --reset --quiet --ledger "$W/ledger" --slots-per-epoch 64 --deactivate-feature "$F" --deactivate-feature "$G" \
+"$TV" --reset --quiet --ledger "$W/ledger" --slots-per-epoch 64 --deactivate-feature "$F" --deactivate-feature "$G" --deactivate-feature "$H" \
   --upgradeable-program CookmMGfe9ti8mrVkCFuZZsuAvjMSRagqh4t8Yxx4Ub4 "$SO" "$(solana-keygen pubkey "$UA")" > "$W/validator.out" 2>&1 &
 VPID=$!
 for _ in $(seq 1 120); do solana -u "$RPC" cluster-version >/dev/null 2>&1 && break; sleep 1; done
-(cd "$HERE" && node --experimental-require-module --no-warnings e2e.js "$UA" "$F" "$G" cookie | tail -1)
+(cd "$HERE" && node --experimental-require-module --no-warnings e2e.js "$UA" "$F" "$G" "$H" cookie | tail -1)
 for _ in $(seq 1 120); do [ "$(solana -u "$RPC" slot --commitment finalized 2>/dev/null || echo 0)" -gt 80 ] && break; sleep 1; done
 kill $VPID; wait $VPID 2>/dev/null; sleep 2
 

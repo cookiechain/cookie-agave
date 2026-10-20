@@ -163,3 +163,50 @@ fn denylisted_features_cannot_be_activated_by_alias() {
         assert!(!bank1.feature_set.is_active(id), "{id} activated");
     }
 }
+
+/// A plain account at an upstream feature address. Anyone can create one by
+/// sending lamports to the address.
+fn stray_account() -> AccountSharedData {
+    AccountSharedData::new(1_000_000, 0, &solana_sdk_ids::system_program::id())
+}
+
+#[test]
+fn lamports_at_upstream_address_do_not_block_the_alias() {
+    let id = subject();
+    let alias = *alias_of(&id).unwrap();
+    let (bank0, _forks) = bank_without(&id);
+    bank0.store_account(&id, &stray_account());
+    bank0.store_account(&alias, &pending_feature_account());
+
+    let first_slot_next_epoch = bank0
+        .epoch_schedule()
+        .get_first_slot_in_epoch(bank0.epoch() + 1);
+    assert_eq!(
+        bank0.compute_pending_activation_slot(&id),
+        Some(first_slot_next_epoch)
+    );
+
+    let (bank1, slot) = next_epoch(bank0);
+    assert!(bank1.feature_set.is_active(&id));
+    assert_eq!(bank1.feature_set.activated_slot(&id), Some(slot));
+    assert_eq!(activated_at(&bank1, &alias), Some(slot));
+    // The plain account is left as it was.
+    assert_eq!(bank1.get_account(&id), Some(stray_account()));
+}
+
+#[test]
+fn lamports_at_upstream_address_without_alias_behave_as_stock() {
+    let id = subject();
+    let alias = *alias_of(&id).unwrap();
+    let (bank0, _forks) = bank_without(&id);
+    bank0.store_account(&id, &stray_account());
+    bank0.store_account(&alias, &stray_account());
+    // As on stock Agave, the plain upstream account is what callers see, so
+    // the ledger tool still reports that it is not a feature account.
+    assert_eq!(
+        bank0.cookie_feature_account(&id),
+        Some((id, stray_account()))
+    );
+    let (bank1, _) = next_epoch(bank0);
+    assert!(!bank1.feature_set.is_active(&id));
+}

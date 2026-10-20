@@ -1,7 +1,8 @@
 // End-to-end test of cookie-feature-gate against a local test validator.
-// Usage: node e2e.js <upgrade-authority-keypair.json> <feature F> <feature G> <cookie|stock>
+// Usage: node e2e.js <upgrade-authority-keypair.json> <feature F> <feature G> <feature H> <cookie|stock>
 //   F is activated and must switch on at the next epoch on the Cookie runtime
-//   (and must NOT on stock Agave). G is activated then revoked.
+//   (and must NOT on stock Agave). G is activated then revoked. H's own
+//   address is sent lamports first; that must not block its alias.
 const fs = require('fs');
 const {
   Connection, Keypair, PublicKey, Transaction, TransactionInstruction,
@@ -13,9 +14,10 @@ const FEATURE_PROG = new PublicKey('Feature111111111111111111111111111111111111'
 const LOADER = new PublicKey('BPFLoaderUpgradeab1e11111111111111111111111');
 const INCINERATOR = new PublicKey('1nc1nerator11111111111111111111111111111111');
 
-const [, , uaPath, fArg, gArg, mode] = process.argv;
+const [, , uaPath, fArg, gArg, hArg, mode] = process.argv;
 const F = new PublicKey(fArg);
 const G = new PublicKey(gArg);
+const H = new PublicKey(hArg);
 const upgradeAuth = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(uaPath))));
 const authority = Keypair.generate();
 const authority2 = Keypair.generate();
@@ -61,7 +63,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
   console.log(`mode=${mode} F=${F.toBase58()} G=${G.toBase58()}`);
-  console.log(`alias(F)=${alias(F).toBase58()} alias(G)=${alias(G).toBase58()}`);
+  console.log(`alias(F)=${alias(F).toBase58()} alias(G)=${alias(G).toBase58()} alias(H)=${alias(H).toBase58()}`);
   for (const k of [upgradeAuth, authority, authority2, intruder]) await airdrop(k.publicKey, 10);
 
   // Initialize: only the program's upgrade authority may set the first authority.
@@ -101,6 +103,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   if (!aG2 || !aG2.owner.equals(FEATURE_PROG)) ok('alias(G) no longer a feature account after revoke');
   else bad('alias(G) no longer a feature account after revoke', 'still owned by Feature111');
 
+  // Someone sends lamports to H's own (upstream) address to try to block its alias.
+  const stray = 1000000;
+  await expectOk('attacker sends lamports to the upstream address H',
+    [SystemProgram.transfer({ fromPubkey: intruder.publicKey, toPubkey: H, lamports: stray })], [intruder]);
+  await expectOk('activate H despite the funded upstream address', [ix.activate(authority.publicKey, authority.publicKey, H)], [authority]);
+
   // Authority hand-over.
   await expectFail('set authority signed by a non-authority',
     [ix.setAuth(intruder.publicKey, intruder.publicKey)], [intruder]);
@@ -126,6 +134,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const upstreamF = await conn.getAccountInfo(F);
   if (!upstreamF) ok('no upstream feature account was created for F');
   else bad('no upstream feature account was created for F', 'upstream account exists');
+  const aH = await conn.getAccountInfo(alias(H));
+  const hActivated = aH && aH.data[0] === 1;
+  if (mode === 'cookie') {
+    if (hActivated) ok('Cookie runtime activated H through its alias despite lamports at H');
+    else bad('Cookie runtime activated H despite lamports at H', `alias data ${aH && [...aH.data]}`);
+  } else {
+    if (!hActivated) ok('stock Agave ignores the alias of H');
+    else bad('stock Agave ignores the alias of H', 'H alias shows activation');
+  }
+  const upstreamH = await conn.getAccountInfo(H);
+  if (upstreamH && upstreamH.owner.equals(SYS) && upstreamH.lamports === stray && upstreamH.data.length === 0)
+    ok('the plain account at H is left as it was');
+  else bad('the plain account at H is left as it was', JSON.stringify(upstreamH && { owner: upstreamH.owner.toBase58(), lamports: upstreamH.lamports }));
   const aG3 = await conn.getAccountInfo(alias(G));
   if (!aG3 || aG3.data.length < 1 || aG3.data[0] === 0 || !aG3.owner.equals(FEATURE_PROG)) ok('revoked G did not activate');
   else bad('revoked G did not activate', 'G alias shows activation');

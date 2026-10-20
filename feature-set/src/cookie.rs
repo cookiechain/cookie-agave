@@ -18,8 +18,9 @@
 //!
 //! Rules:
 //! - Upstream feature IDs are never edited.
-//! - If an upstream feature account exists, it is used as on stock Agave and
-//!   the alias is ignored.
+//! - If a feature account exists at the upstream address, it is used as on
+//!   stock Agave and the alias is ignored. A plain account there (anyone can
+//!   send lamports to any address) does not hide the alias.
 //! - An alias only counts if it is a valid feature account.
 //! - Features in [`DENYLIST`] have no alias.
 
@@ -76,19 +77,25 @@ pub fn alias_of(feature_id: &Pubkey) -> Option<&'static Pubkey> {
 }
 
 /// For client tools that fetch feature accounts in bulk: the positions in
-/// `fetched` whose account is missing but which have an alias, and the alias
-/// addresses to fetch for them, in the same order.
-pub fn missing_aliases<T>(ids: &[Pubkey], fetched: &[Option<T>]) -> (Vec<usize>, Vec<Pubkey>) {
+/// `fetched` that do not hold a feature account but which have an alias, and
+/// the alias addresses to fetch for them, in the same order.
+pub fn missing_aliases<T>(
+    ids: &[Pubkey],
+    fetched: &[Option<T>],
+    is_feature_account: impl Fn(&T) -> bool,
+) -> (Vec<usize>, Vec<Pubkey>) {
     ids.iter()
         .zip(fetched)
         .enumerate()
-        .filter(|(_, (_, account))| account.is_none())
+        .filter(|(_, (_, account))| !account.as_ref().is_some_and(&is_feature_account))
         .filter_map(|(position, (id, _))| alias_of(id).map(|alias| (position, *alias)))
         .unzip()
 }
 
 /// Fills the positions returned by [`missing_aliases`] with the fetched alias
-/// accounts, keeping only those that `is_feature_account` accepts.
+/// accounts that `is_feature_account` accepts. Where the alias is not a
+/// feature account, the upstream entry is kept, as on stock Agave. A feature
+/// account at the upstream address is never replaced.
 pub fn fill_from_aliases<T>(
     fetched: &mut [Option<T>],
     positions: &[usize],
@@ -96,8 +103,10 @@ pub fn fill_from_aliases<T>(
     is_feature_account: impl Fn(&T) -> bool,
 ) {
     for (position, alias_account) in positions.iter().zip(alias_accounts) {
-        if fetched[*position].is_none() {
-            fetched[*position] = alias_account.filter(|account| is_feature_account(account));
+        let entry = &mut fetched[*position];
+        let alias_account = alias_account.filter(|account| is_feature_account(account));
+        if alias_account.is_some() && !entry.as_ref().is_some_and(&is_feature_account) {
+            *entry = alias_account;
         }
     }
 }
@@ -123,24 +132,30 @@ mod tests {
         }
     }
 
-    #[test]
-    fn missing_aliases_only_for_missing_aliasable_features() {
-        let with_alias = crate::block_revenue_sharing::id();
-        let denied = crate::alpenglow::id();
-        let unknown = Pubkey::new_unique();
-        let ids = [with_alias, with_alias, denied, unknown];
-        let fetched = [None, Some(1u8), None, None];
-        let (positions, aliases) = missing_aliases(&ids, &fetched);
-        assert_eq!(positions, vec![0]);
-        assert_eq!(aliases, vec![alias_address(&with_alias)]);
+    /// In these tests, account 1 is a feature account and account 0 is not.
+    fn is_feature(account: &u8) -> bool {
+        *account == 1
     }
 
     #[test]
-    fn fill_keeps_only_valid_feature_accounts() {
-        let mut fetched = vec![None, Some(7u8), None];
-        fill_from_aliases(&mut fetched, &[0, 2], vec![Some(1u8), Some(2u8)], |a| {
-            *a == 1
-        });
-        assert_eq!(fetched, vec![Some(1), Some(7), None]);
+    fn missing_aliases_only_for_aliasable_features_without_a_feature_account() {
+        let with_alias = crate::block_revenue_sharing::id();
+        let denied = crate::alpenglow::id();
+        let unknown = Pubkey::new_unique();
+        let ids = [with_alias, with_alias, with_alias, denied, unknown];
+        let fetched = [None, Some(1u8), Some(0u8), None, Some(0u8)];
+        let (positions, aliases) = missing_aliases(&ids, &fetched, is_feature);
+        assert_eq!(positions, vec![0, 2]);
+        assert_eq!(aliases, vec![alias_address(&with_alias); 2]);
+    }
+
+    #[test]
+    fn fill_uses_only_valid_alias_accounts() {
+        let mut fetched = vec![None, Some(0u8), Some(0u8), Some(1u8)];
+        let aliases = vec![Some(1u8), Some(1u8), Some(0u8), Some(1u8)];
+        fill_from_aliases(&mut fetched, &[0, 1, 2, 3], aliases, is_feature);
+        // A valid alias replaces a missing or plain account. Otherwise the
+        // upstream entry is kept, and a real feature account always wins.
+        assert_eq!(fetched, vec![Some(1), Some(1), Some(0), Some(1)]);
     }
 }

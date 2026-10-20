@@ -16,20 +16,27 @@ impl Bank {
     /// The account that holds activation state for `feature_id`, and its
     /// address.
     ///
-    /// The upstream feature account wins if it exists (stock behaviour).
-    /// Otherwise the Cookie alias is used, but only if it is a valid feature
-    /// account. With no alias accounts on chain this is identical to stock
-    /// Agave.
+    /// A feature account at the upstream address wins (stock behaviour).
+    /// Otherwise the Cookie alias is used if it is a feature account. Anyone
+    /// can send lamports to an upstream feature address, so a plain account
+    /// there does not hide the alias. Failing both, whatever is at the
+    /// upstream address is returned, as on stock Agave. With no alias
+    /// accounts on chain this is identical to stock Agave.
     pub fn cookie_feature_account(
         &self,
         feature_id: &Pubkey,
     ) -> Option<(Pubkey, AccountSharedData)> {
-        if let Some(account) = self.get_account_with_fixed_root(feature_id) {
-            return Some((*feature_id, account));
+        let upstream = self.get_account_with_fixed_root(feature_id);
+        if upstream.as_ref().is_some_and(is_feature_account) {
+            return upstream.map(|account| (*feature_id, account));
         }
-        let alias = alias_of(feature_id)?;
-        let account = self.get_account_with_fixed_root(alias)?;
-        feature::from_account(&account)?;
-        Some((*alias, account))
+        alias_of(feature_id)
+            .and_then(|alias| Some((*alias, self.get_account_with_fixed_root(alias)?)))
+            .filter(|(_, account)| is_feature_account(account))
+            .or_else(|| upstream.map(|account| (*feature_id, account)))
     }
+}
+
+fn is_feature_account(account: &AccountSharedData) -> bool {
+    feature::from_account(account).is_some()
 }

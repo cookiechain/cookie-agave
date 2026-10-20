@@ -13,6 +13,7 @@ SO="$PROGRAM_DIR/target/deploy/cookie_feature_gate.so"
 PROGRAM=CookmMGfe9ti8mrVkCFuZZsuAvjMSRagqh4t8Yxx4Ub4
 F=B1ockRevenueSharing111111111111111111111111
 G=CustomCommissionCo11ector111111111111111111
+H=bn1hKNURMGQaQoEVxahcEAcqiX3NwRs6hgKKNSLeKxH
 RPC=http://127.0.0.1:8899
 RPC2=http://127.0.0.1:9799
 
@@ -34,13 +35,13 @@ trap 'kill "${PIDS[@]}" 2>/dev/null; wait 2>/dev/null; rm -rf "$WORK"' EXIT
 wait_rpc() { for _ in $(seq 1 180); do "$STOCK_CLI" -u "$1" cluster-version >/dev/null 2>&1 && return 0; sleep 1; done; return 1; }
 
 "$TV" --reset --quiet --ledger "$WORK/ledger" --slots-per-epoch 64 \
-  --deactivate-feature "$F" --deactivate-feature "$G" \
+  --deactivate-feature "$F" --deactivate-feature "$G" --deactivate-feature "$H" \
   --upgradeable-program "$PROGRAM" "$SO" "$(solana-keygen pubkey "$UA")" > "$WORK/validator.out" 2>&1 &
 PIDS+=($!)
 wait_rpc "$RPC" || { echo "validator did not start"; exit 2; }
 echo "validator: $("$TV" --version 2>/dev/null | head -1)"
 
-cd "$HERE" && node --experimental-require-module --no-warnings e2e.js "$UA" "$F" "$G" "$MODE"
+cd "$HERE" && node --experimental-require-module --no-warnings e2e.js "$UA" "$F" "$G" "$H" "$MODE"
 RC=$?
 
 # Tool checks: the CLI must report feature status exactly as Solana would.
@@ -48,10 +49,11 @@ FAIL=0
 pass() { echo "PASS  $1"; }
 fail() { echo "FAIL  $1"; FAIL=1; }
 status_of() { "$1" -u "$2" feature status "$3" --output json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const f=JSON.parse(s).features[0];const st=f.status;console.log(typeof st==="string"?st:(st.type||Object.keys(st)[0]))}catch(e){console.log("unknown")}})'; }
-SF=$(status_of "$CLI" "$RPC" "$F"); SG=$(status_of "$CLI" "$RPC" "$G")
-echo "solana feature status ($MODE CLI): F=$SF G=$SG"
+SF=$(status_of "$CLI" "$RPC" "$F"); SG=$(status_of "$CLI" "$RPC" "$G"); SH=$(status_of "$CLI" "$RPC" "$H")
+echo "solana feature status ($MODE CLI): F=$SF G=$SG H=$SH"
 if [ "$MODE" = cookie ]; then
   case "$SF" in active*|Active*) pass "Cookie CLI shows the alias-activated feature as active";; *) fail "Cookie CLI shows F as active (got $SF)";; esac
+  case "$SH" in active*|Active*) pass "Cookie CLI shows H as active despite lamports at H";; *) fail "Cookie CLI shows H as active (got $SH)";; esac
   case "$SG" in inactive*|Inactive*) pass "Cookie CLI shows the revoked feature as inactive";; *) fail "Cookie CLI shows G as inactive (got $SG)";; esac
   SS=$(status_of "$STOCK_CLI" "$RPC" "$F")
   echo "solana feature status (stock CLI): F=$SS"
@@ -65,8 +67,9 @@ if [ "$MODE" = cookie ]; then
     --clone-feature-set --url "$RPC" > "$WORK/validator2.out" 2>&1 &
   PIDS+=($!)
   if wait_rpc "$RPC2"; then
-    SC=$(status_of "$CLI" "$RPC2" "$F")
+    SC=$(status_of "$CLI" "$RPC2" "$F"); SCH=$(status_of "$CLI" "$RPC2" "$H")
     case "$SC" in active*|Active*) pass "test validator cloned with --clone-feature-set has F active";; *) fail "cloned test validator has F active (got $SC)";; esac
+    case "$SCH" in active*|Active*) pass "test validator cloned with --clone-feature-set has H active";; *) fail "cloned test validator has H active (got $SCH)";; esac
   else
     fail "cloned test validator did not start"; tail -5 "$WORK/validator2.out"
   fi
