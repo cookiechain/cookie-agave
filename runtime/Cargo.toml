@@ -140,7 +140,8 @@ solana-poh-config = { workspace = true }
 solana-precompile-error = { workspace = true }
 solana-program-binaries = { workspace = true, optional = true }
 solana-program-runtime = { workspace = true, features = ["metrics"] }
-solana-pubkey = { workspace = true, features = ["rand"] }
+# Cookie: curve25519 for Cookie feature alias PDA derivation.
+solana-pubkey = { workspace = true, features = ["curve25519", "rand"] }
 solana-rayon-threadlimit = { workspace = true }
 solana-rent = { workspace = true }
 solana-reward-info = { workspace = true }

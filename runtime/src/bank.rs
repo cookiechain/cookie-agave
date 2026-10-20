@@ -5591,11 +5591,12 @@ impl Bank {
 
         // Update activation slot of features in `new_feature_activations`
         for feature_id in new_feature_activations.iter() {
-            if let Some(mut account) = self.get_account_with_fixed_root(feature_id) {
+            // Cookie: activation state may live in a Cookie alias account.
+            if let Some((account_id, mut account)) = self.cookie_feature_account(feature_id) {
                 if let Some(mut feature) = feature::state::from_account(&account) {
                     feature.activated_at = Some(self.slot());
                     if feature::state::to_account(&feature, &mut account).is_some() {
-                        self.store_account(feature_id, &account);
+                        self.store_account(&account_id, &account);
                     }
                     info!("Feature {} activated at slot {}", feature_id, self.slot());
                 }
@@ -5780,7 +5781,8 @@ impl Bank {
 
         for feature_id in self.feature_set.inactive() {
             let mut activated = None;
-            if let Some(account) = self.get_account_with_fixed_root(feature_id) {
+            // Cookie: activation state may live in a Cookie alias account.
+            if let Some((_, account)) = self.cookie_feature_account(feature_id) {
                 if let Some(feature) = feature::state::from_account(&account) {
                     match feature.activated_at {
                         None if include_pending => {
@@ -5809,7 +5811,8 @@ impl Bank {
     /// If `feature_id` is pending to be activated at the next epoch boundary, return
     /// the first slot at which it will be active (the epoch boundary).
     pub fn compute_pending_activation_slot(&self, feature_id: &Pubkey) -> Option<Slot> {
-        let account = self.get_account_with_fixed_root(feature_id)?;
+        // Cookie: activation state may live in a Cookie alias account.
+        let (_, account) = self.cookie_feature_account(feature_id)?;
         let feature = feature::from_account(&account)?;
         if feature.activated_at.is_some() {
             // Feature is already active
