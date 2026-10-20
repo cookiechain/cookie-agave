@@ -8,6 +8,7 @@ use {
         compute_budget::{
             ComputeUnitConfig, WithComputeUnitConfig, simulate_and_update_compute_unit_limit,
         },
+        cookie::CookieFeatureAccounts,
         feature::get_feature_is_active,
         memo::WithMemo,
         nonce::check_nonce_account,
@@ -1605,7 +1606,7 @@ pub async fn process_show_vote_account(
 
     let epoch_schedule = rpc_client.get_epoch_schedule().await?;
     let tvc_activation_slot = rpc_client
-        .get_account_with_commitment(
+        .get_feature_account_with_commitment(
             &agave_feature_set::timely_vote_credits::id(),
             config.commitment,
         )

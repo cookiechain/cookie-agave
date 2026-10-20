@@ -2217,8 +2217,10 @@ fn main() {
                         }
 
                         for address in feature_gates_to_deactivate {
-                            let mut account =
-                                child_bank.get_account(&address).unwrap_or_else(|| {
+                            // Cookie: the feature may live in a Cookie alias account.
+                            let (account_address, mut account) = child_bank
+                                .cookie_feature_account(&address)
+                                .unwrap_or_else(|| {
                                     eprintln!(
                                         "Error: Feature-gate account does not exist, unable to \
                                          deactivate it: {address}"
@@ -2241,7 +2243,7 @@ fn main() {
                             }
 
                             account.set_lamports(0);
-                            child_bank.store_account(&address, &account);
+                            child_bank.store_account(&account_address, &account);
                             debug!("Feature gate deactivated: {address}");
                         }
 

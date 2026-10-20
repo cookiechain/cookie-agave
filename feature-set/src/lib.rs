@@ -2711,3 +2711,6 @@ mod test {
         );
     }
 }
+
+// Cookie: feature aliases (see cookie.rs).
+pub mod cookie;

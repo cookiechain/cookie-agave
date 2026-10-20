@@ -4,6 +4,7 @@ use {
             CliCommand, CliCommandInfo, CliConfig, CliError, ProcessResult,
             log_instruction_custom_error, log_instruction_custom_error_to_str,
         },
+        cookie::CookieFeatureAccounts,
         spend_utils::{SpendAmount, resolve_spend_tx_and_check_account_balance},
     },
     agave_feature_set::FEATURE_NAMES,
@@ -884,7 +885,7 @@ async fn get_feature_status(
     feature_id: &Pubkey,
 ) -> Result<Option<CliFeatureStatus>, Box<dyn std::error::Error>> {
     rpc_client
-        .get_account(feature_id)
+        .get_feature_account(feature_id)
         .await
         .map(status_from_account)
         .map_err(|e| e.into())
@@ -904,7 +905,7 @@ pub async fn get_feature_activation_epoch(
     feature_id: &Pubkey,
 ) -> Result<Option<Epoch>, ClientError> {
     let activation_slot = rpc_client
-        .get_account(feature_id)
+        .get_feature_account(feature_id)
         .await
         .ok()
         .and_then(|account| from_account(&account))
@@ -929,7 +930,7 @@ async fn process_status(
     let mut features = vec![];
     for feature_ids in feature_ids.chunks(MAX_MULTIPLE_ACCOUNTS) {
         let mut feature_chunk = rpc_client
-            .get_multiple_accounts(feature_ids)
+            .get_feature_accounts(feature_ids)
             .await?
             .into_iter()
             .zip(feature_ids)
@@ -990,7 +991,7 @@ async fn process_activate(
 
     let fee_payer = config.signers[fee_payer];
     let account = rpc_client
-        .get_multiple_accounts(&[feature_id])
+        .get_feature_accounts(&[feature_id])
         .await?
         .into_iter()
         .next()

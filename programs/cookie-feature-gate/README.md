@@ -40,4 +40,9 @@ From then on, every activation is a Squads vault transaction containing one `Act
 ## Tests
 
 - Unit tests: `cargo test`
-- End-to-end: `tests/e2e/run-e2e.sh cookie` and `tests/e2e/run-e2e.sh stock`. These start a local test validator, deploy the program, try every misuse, activate and revoke features, and check that the Cookie runtime (and only the Cookie runtime) activates the feature at the epoch boundary. Requires Agave 4.1.2 tools, Node.js 22 and `npm install` in `tests/e2e`. The `cookie` mode needs `cargo build -p agave-validator --bin solana-test-validator` at the repository root first.
+- End-to-end: `tests/e2e/run-e2e.sh cookie` and `tests/e2e/run-e2e.sh stock`. These start a local test validator, deploy the program, try every misuse, activate and revoke features, and check that the Cookie runtime (and only the Cookie runtime) activates the feature at the epoch boundary. In `cookie` mode they also check that `solana feature status` reports the feature as active exactly as on Solana, and that `solana-test-validator --clone-feature-set` copies it. Requires Agave 4.1.2 tools, Node.js 22 and `npm install` in `tests/e2e`. The `cookie` mode needs `cargo build -p agave-validator --bin solana-test-validator -p solana-cli --bin solana` at the repository root first.
+- Ledger tool: `tests/e2e/ledger-tool-check.sh` checks that `agave-ledger-tool create-snapshot --deactivate-feature-gate` (used in an emergency restart) works for a feature activated through an alias. Build `agave-ledger-tool` in `dev-bins` first.
+
+## Viewing feature status
+
+Use the Cookie build of the `solana` CLI. `solana feature status` shows features activated through the switches exactly as Solana shows normal activations. The stock Solana CLI cannot see Cookie aliases and shows them as inactive.
