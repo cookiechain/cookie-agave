@@ -9,7 +9,7 @@ The goal: Cookie changes should sit **beside** Agave's code, not inside it, so p
 - All Cookie logic lives in new files and modules, for example:
   - `runtime/src/cookie/` for runtime behaviour (fees, burn, stake cap, migrations)
   - `feature-set/src/cookie.rs` for Cookie feature IDs and the alias table
-  - `programs/cookie-feature-gate/` and `programs/cookie-recovery/` for on-chain programs
+  - `programs/cookie-feature-gate/` for the feature switch program
 - Upstream files get **only a one-line hook** that calls into the Cookie module, for example `if let Some(fee) = cookie::fees::override_fee(...) { ... }`.
 - Never copy a large upstream function to modify it. Hook before or after it instead.
 
