@@ -11,6 +11,7 @@ pub mod v2;
 pub mod v3;
 pub mod v4;
 
+pub mod cookie;
 pub use {client_ids::*, v4::*};
 
 pub(crate) fn compute_commit(sha1: Option<&'static str>) -> Option<u32> {
@@ -27,7 +28,7 @@ macro_rules! semver {
 #[macro_export]
 macro_rules! version {
     () => {
-        &*format!("{}", $crate::Version::default().as_detailed_string())
+        &*$crate::cookie::detailed(&$crate::Version::default())
     };
 }
 
