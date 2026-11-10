@@ -60,6 +60,24 @@ pub static DENYLIST: LazyLock<[Pubkey; 4]> = LazyLock::new(|| {
     ]
 });
 
+/// Cookie Chain only: replace SPL Token with p-token from the Cookie buffer.
+/// Activated through the Cookie feature switch, which derives this address, so
+/// no keypair for it exists.
+pub mod replace_spl_token_with_p_token {
+    solana_pubkey::declare_id!("CDJ9yJcfcJ2QkHaYhseA7jtihbhmNsBK46tZAJGsN9Xg");
+}
+
+/// Cookie-only features, with their descriptions. Chained into
+/// [`crate::FEATURE_NAMES`] by one line, so they count as known features and
+/// get an alias like any upstream feature, without editing upstream's list.
+pub fn feature_names() -> impl Iterator<Item = (Pubkey, &'static str)> {
+    [(
+        replace_spl_token_with_p_token::id(),
+        "Cookie: Replace SPL Token with p-token from the Cookie buffer",
+    )]
+    .into_iter()
+}
+
 /// Alias PDA for an upstream feature ID.
 pub fn alias_address(feature_id: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(

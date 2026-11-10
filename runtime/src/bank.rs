@@ -5682,15 +5682,7 @@ impl Bank {
             }
         }
 
-        if new_feature_activations.contains(&feature_set::upgrade_bpf_stake_program_to_v5::id()) {
-            if let Err(e) = self.upgrade_core_bpf_program(
-                &solana_sdk_ids::stake::id(),
-                &feature_set::upgrade_bpf_stake_program_to_v5::buffer::id(),
-                "upgrade_stake_program_to_v5",
-            ) {
-                error!("Failed to upgrade Core BPF Stake program: {e}");
-            }
-        }
+        self.apply_cookie_program_swaps(&new_feature_activations);
     }
 
     fn apply_new_builtin_program_feature_transitions(

@@ -72,6 +72,19 @@ impl SourceBuffer {
 
         Ok(buffer)
     }
+
+    pub(crate) fn new_checked_optional_hash(
+        bank: &Bank,
+        buffer_address: &Pubkey,
+        expected_hash: Option<Hash>,
+    ) -> Result<Self, CoreBpfMigrationError> {
+        match expected_hash {
+            Some(expected_hash) => {
+                Self::new_checked_with_verified_build_hash(bank, buffer_address, expected_hash)
+            }
+            None => Self::new_checked(bank, buffer_address),
+        }
+    }
 }
 
 #[cfg(test)]
