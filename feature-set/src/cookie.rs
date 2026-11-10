@@ -43,6 +43,10 @@ pub const ALIAS_SEED: &[u8] = b"cookie-alias";
 /// - Alpenglow (SIMD-0326) is only a placeholder in Agave 4.1. It is
 ///   activated on Cookie's 4.3 release, after Solana mainnet runs it safely.
 /// - The other three were abandoned upstream.
+///
+/// The `cookie-feature-gate` program refuses to activate these too, from its
+/// own copy in `programs/cookie-feature-gate/src/denylist.rs`. A test below
+/// fails if the two lists differ.
 pub static DENYLIST: LazyLock<[Pubkey; 4]> = LazyLock::new(|| {
     [
         crate::alpenglow::id(),
@@ -157,5 +161,25 @@ mod tests {
         // A valid alias replaces a missing or plain account. Otherwise the
         // upstream entry is kept, and a real feature account always wins.
         assert_eq!(fetched, vec![Some(1), Some(1), Some(0), Some(1)]);
+    }
+
+    // With `dev-context-only-utils`, `alpenglow::id()` is a test key, not the
+    // real placeholder the program refuses, so this only runs in normal builds.
+    #[cfg(not(feature = "dev-context-only-utils"))]
+    #[test]
+    fn denylist_matches_the_switch_program() {
+        let program_list = include_str!("../../programs/cookie-feature-gate/src/denylist.rs");
+        let mut in_program: Vec<String> = program_list
+            .split("pubkey!(\"")
+            .skip(1)
+            .map(|rest| rest.split('"').next().unwrap().to_string())
+            .collect();
+        let mut here: Vec<String> = DENYLIST.iter().map(|id| id.to_string()).collect();
+        in_program.sort();
+        here.sort();
+        assert_eq!(
+            in_program, here,
+            "programs/cookie-feature-gate/src/denylist.rs and DENYLIST differ"
+        );
     }
 }

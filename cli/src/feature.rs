@@ -1068,6 +1068,7 @@ async fn process_revoke(
     check_rpc_genesis_hash(&cluster, rpc_client).await?;
 
     let fee_payer = config.signers[fee_payer];
+    crate::cookie::check_revoke_target(rpc_client, &feature_id).await?;
     let account = rpc_client.get_account(&feature_id).await.ok();
 
     match account.and_then(status_from_account) {

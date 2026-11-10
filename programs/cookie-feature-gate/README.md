@@ -22,10 +22,13 @@ Each instruction is one tag byte followed by one 32-byte public key. Builders ar
 | 1 | `SetAuthority { new_authority }` | Current authority | config (w), authority (s) |
 | 2 | `Activate { feature_id }` | Authority | config, authority (s), alias (w), payer (w,s), system program |
 | 3 | `Revoke { feature_id }` | Authority | config, authority (s), alias (w), incinerator (w), feature program, system program |
+| 4 | `AcceptAuthority { new_authority }` | The pending authority | config (w), new authority (s) |
 
 - `Activate` fails if the alias is already a feature account. It still works if someone pre-funded the alias address, by topping it up to rent exemption.
+- `Activate` refuses the four denylisted IDs (`src/denylist.rs`): the Alpenglow placeholder in Agave 4.1 and three IDs upstream abandoned. The validator ignores their aliases anyway; refusing them here means a mistaken request cannot sit pending and switch on by itself in a later release. The list must match `DENYLIST` in `feature-set/src/cookie.rs`, and a test there checks it.
+- Handing over the authority takes two steps, so a mistake cannot hand it to an address nobody controls. `SetAuthority` names a pending authority; the current authority stays in charge until the pending one signs `AcceptAuthority`. `SetAuthority` naming the current authority clears a pending handover. This works between any two signers, including vaults of different multisigs, which could not both sign one transaction.
 - `Revoke` only works before the next epoch boundary. The feature program rejects revoking an active feature. The alias's lamports are burned.
-- Config PDA: `["config"]`, 33 bytes: `[version = 1][authority]`.
+- Config PDA: `["config"]`, 66 bytes: `[version = 2][authority][has_pending: 0 or 1][pending authority]`. Version 1 (33 bytes, single-step handover) was never deployed.
 
 ## Deployment on Cookie (plan step 4)
 

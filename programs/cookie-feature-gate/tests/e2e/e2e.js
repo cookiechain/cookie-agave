@@ -13,6 +13,7 @@ const PROGRAM = new PublicKey('CookmMGfe9ti8mrVkCFuZZsuAvjMSRagqh4t8Yxx4Ub4');
 const FEATURE_PROG = new PublicKey('Feature111111111111111111111111111111111111');
 const LOADER = new PublicKey('BPFLoaderUpgradeab1e11111111111111111111111');
 const INCINERATOR = new PublicKey('1nc1nerator11111111111111111111111111111111');
+const DENIED = new PublicKey('mustRekeyVm2QHYB3JPefBiU4BY3Z6JkW2k3Scw5GWP'); // Alpenglow placeholder, on the denylist
 
 const [, , uaPath, fArg, gArg, hArg, mode] = process.argv;
 const F = new PublicKey(fArg);
@@ -41,6 +42,8 @@ const ix = {
     keys: [m(CONFIG, false, false), m(auth, true, false), m(alias(f), false, true), m(payer, true, true), m(SYS, false, false)] }),
   revoke: (auth, f) => new TransactionInstruction({ programId: PROGRAM, data: data(3, f),
     keys: [m(CONFIG, false, false), m(auth, true, false), m(alias(f), false, true), m(INCINERATOR, false, true), m(FEATURE_PROG, false, false), m(SYS, false, false)] }),
+  accept: (next, signer = next, signs = true) => new TransactionInstruction({ programId: PROGRAM, data: data(4, next),
+    keys: [m(CONFIG, false, true), m(signer, signs, false)] }),
 };
 
 let failures = 0;
@@ -72,8 +75,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await expectOk('initialize by the upgrade authority',
     [ix.init(upgradeAuth.publicKey, upgradeAuth.publicKey, authority.publicKey)], [upgradeAuth]);
   const cfg = await conn.getAccountInfo(CONFIG);
-  if (cfg && cfg.owner.equals(PROGRAM) && cfg.data.length === 33 && cfg.data[0] === 1
-      && new PublicKey(cfg.data.subarray(1, 33)).equals(authority.publicKey)) ok('config stores the authority');
+  if (cfg && cfg.owner.equals(PROGRAM) && cfg.data.length === 66 && cfg.data[0] === 2
+      && new PublicKey(cfg.data.subarray(1, 33)).equals(authority.publicKey) && cfg.data[33] === 0)
+    ok('config stores the authority, no pending authority');
   else bad('config stores the authority', JSON.stringify(cfg && { owner: cfg.owner.toBase58(), len: cfg.data.length }));
   await expectFail('initialize a second time',
     [ix.init(upgradeAuth.publicKey, upgradeAuth.publicKey, intruder.publicKey)], [upgradeAuth]);
@@ -87,6 +91,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     ok('alias(F) is a pending feature account (owner Feature111, 9 zero bytes)');
   else bad('alias(F) is a pending feature account', JSON.stringify(aF && { owner: aF.owner.toBase58(), data: [...aF.data] }));
   await expectFail('activate F again', [ix.activate(authority.publicKey, authority.publicKey, F)], [authority]);
+  await expectFail('activate a denylisted feature (Alpenglow placeholder)',
+    [ix.activate(authority.publicKey, authority.publicKey, DENIED)], [authority]);
+  const aD = await conn.getAccountInfo(alias(DENIED));
+  if (!aD || !aD.owner.equals(FEATURE_PROG)) ok('no alias account was created for the denylisted feature');
+  else bad('no alias account was created for the denylisted feature', 'alias owned by Feature111');
 
   // Someone pre-funds alias(G) to try to block it; activation must still work.
   await expectOk('attacker sends lamports to alias(G)',
@@ -109,10 +118,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     [SystemProgram.transfer({ fromPubkey: intruder.publicKey, toPubkey: H, lamports: stray })], [intruder]);
   await expectOk('activate H despite the funded upstream address', [ix.activate(authority.publicKey, authority.publicKey, H)], [authority]);
 
-  // Authority hand-over.
+  // Authority hand-over, in two steps: name a pending authority, which then accepts.
   await expectFail('set authority signed by a non-authority',
     [ix.setAuth(intruder.publicKey, intruder.publicKey)], [intruder]);
-  await expectOk('set authority to a new key', [ix.setAuth(authority.publicKey, authority2.publicKey)], [authority]);
+  await expectOk('name a new pending authority', [ix.setAuth(authority.publicKey, authority2.publicKey)], [authority]);
+  const cfg2 = await conn.getAccountInfo(CONFIG);
+  if (cfg2 && new PublicKey(cfg2.data.subarray(1, 33)).equals(authority.publicKey) && cfg2.data[33] === 1
+      && new PublicKey(cfg2.data.subarray(34, 66)).equals(authority2.publicKey))
+    ok('naming a pending authority does not hand over yet');
+  else bad('naming a pending authority does not hand over yet', JSON.stringify(cfg2 && [...cfg2.data]));
+  await expectFail('accept by someone other than the pending authority', [ix.accept(intruder.publicKey)], [intruder]);
+  await expectFail('accept for the pending authority without its signature',
+    [ix.accept(authority2.publicKey, authority2.publicKey, false)], [intruder]);
+  await expectOk('the pending authority accepts', [ix.accept(authority2.publicKey)], [authority2]);
+  await expectFail('accept a second time', [ix.accept(authority2.publicKey)], [authority2]);
   await expectFail('old authority can no longer activate',
     [ix.activate(authority.publicKey, authority.publicKey, G)], [authority]);
 

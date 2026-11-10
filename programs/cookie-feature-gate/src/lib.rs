@@ -19,6 +19,7 @@
 
 #![allow(unexpected_cfgs)]
 
+pub mod denylist;
 pub mod instruction;
 pub mod processor;
 pub mod state;

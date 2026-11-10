@@ -4,6 +4,7 @@ use {
     crate::{
         ALIAS_SEED, BPF_LOADER_UPGRADEABLE_ID, CONFIG_SEED, FEATURE_ACCOUNT_SIZE,
         FEATURE_PROGRAM_ID, INCINERATOR_ID, alias_address, config_address,
+        denylist::DENYLIST,
         instruction::GateInstruction,
         state::{CONFIG_SIZE, Config, programdata_upgrade_authority},
     },
@@ -33,6 +34,9 @@ pub fn process_instruction(
         }
         GateInstruction::Activate { feature_id } => activate(program_id, accounts, feature_id),
         GateInstruction::Revoke { feature_id } => revoke(program_id, accounts, feature_id),
+        GateInstruction::AcceptAuthority { new_authority } => {
+            accept_authority(program_id, accounts, new_authority)
+        }
     }
 }
 
@@ -83,12 +87,8 @@ fn create_pda_account<'a>(
     )
 }
 
-/// Loads the config and checks that `authority` is its authority and signed.
-fn check_authority(
-    program_id: &Pubkey,
-    config: &AccountInfo,
-    authority: &AccountInfo,
-) -> ProgramResult {
+/// Loads the config, after checking it is this program's initialized config.
+fn load_config(program_id: &Pubkey, config: &AccountInfo) -> Result<Config, ProgramError> {
     require(
         *config.key == config_address().0,
         ProgramError::InvalidArgument,
@@ -99,7 +99,16 @@ fn check_authority(
         ProgramError::UninitializedAccount,
         "not initialized",
     )?;
-    let state = Config::unpack(&config.data.borrow())?;
+    Config::unpack(&config.data.borrow())
+}
+
+/// Loads the config and checks that `authority` is its authority and signed.
+fn check_authority(
+    program_id: &Pubkey,
+    config: &AccountInfo,
+    authority: &AccountInfo,
+) -> Result<Config, ProgramError> {
+    let state = load_config(program_id, config)?;
     require(
         *authority.key == state.authority,
         ProgramError::InvalidArgument,
@@ -109,7 +118,8 @@ fn check_authority(
         authority.is_signer,
         ProgramError::MissingRequiredSignature,
         "authority must sign",
-    )
+    )?;
+    Ok(state)
 }
 
 fn initialize(program_id: &Pubkey, accounts: &[AccountInfo], authority: Pubkey) -> ProgramResult {
@@ -174,7 +184,11 @@ fn initialize(program_id: &Pubkey, accounts: &[AccountInfo], authority: Pubkey) 
         program_id,
         &[CONFIG_SEED, &[bump]],
     )?;
-    Config { authority }.pack(&mut config.data.borrow_mut())?;
+    Config {
+        authority,
+        pending_authority: None,
+    }
+    .pack(&mut config.data.borrow_mut())?;
     msg!("cookie-feature-gate: initialized, authority {}", authority);
     Ok(())
 }
@@ -187,11 +201,43 @@ fn set_authority(
     let it = &mut accounts.iter();
     let config = next_account_info(it)?;
     let authority = next_account_info(it)?;
-    check_authority(program_id, config, authority)?;
-    Config {
-        authority: new_authority,
+    let mut state = check_authority(program_id, config, authority)?;
+    // Step one of two: the new authority only takes over once it signs
+    // AcceptAuthority, so a typo cannot hand control to an unusable address.
+    state.pending_authority = (new_authority != state.authority).then_some(new_authority);
+    state.pack(&mut config.data.borrow_mut())?;
+    match state.pending_authority {
+        Some(pending) => msg!(
+            "cookie-feature-gate: {} may now accept the authority",
+            pending
+        ),
+        None => msg!("cookie-feature-gate: pending authority cleared"),
     }
-    .pack(&mut config.data.borrow_mut())?;
+    Ok(())
+}
+
+fn accept_authority(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    new_authority: Pubkey,
+) -> ProgramResult {
+    let it = &mut accounts.iter();
+    let config = next_account_info(it)?;
+    let signer = next_account_info(it)?;
+    let mut state = load_config(program_id, config)?;
+    require(
+        state.pending_authority == Some(new_authority) && *signer.key == new_authority,
+        ProgramError::InvalidArgument,
+        "not the pending authority",
+    )?;
+    require(
+        signer.is_signer,
+        ProgramError::MissingRequiredSignature,
+        "the new authority must sign",
+    )?;
+    state.authority = new_authority;
+    state.pending_authority = None;
+    state.pack(&mut config.data.borrow_mut())?;
     msg!(
         "cookie-feature-gate: authority changed to {}",
         new_authority
@@ -207,6 +253,11 @@ fn activate(program_id: &Pubkey, accounts: &[AccountInfo], feature_id: Pubkey) -
     let payer = next_account_info(it)?;
     let system = next_account_info(it)?;
     check_authority(program_id, config, authority)?;
+    require(
+        !DENYLIST.contains(&feature_id),
+        ProgramError::InvalidArgument,
+        "feature is on the Cookie denylist and can never be activated",
+    )?;
 
     let (alias_key, bump) = alias_address(&feature_id);
     require(

@@ -19,12 +19,23 @@ use {
 pub enum GateInstruction {
     /// Accounts: `[w] config, [w,s] payer, [s] upgrade authority, [] program data, [] system program`
     Initialize { authority: Pubkey },
+    /// Step one of a handover: names `new_authority` as the pending authority.
+    /// The current authority stays in charge until it accepts. Naming the
+    /// current authority clears a pending handover.
+    ///
     /// Accounts: `[w] config, [s] current authority`
     SetAuthority { new_authority: Pubkey },
+    /// Refuses features on the denylist (`crate::denylist`).
+    ///
     /// Accounts: `[] config, [s] authority, [w] alias, [w,s] payer, [] system program`
     Activate { feature_id: Pubkey },
     /// Accounts: `[] config, [s] authority, [w] alias, [w] incinerator, [] feature program, [] system program`
     Revoke { feature_id: Pubkey },
+    /// Step two of a handover: the pending authority, `new_authority`, signs to
+    /// take over.
+    ///
+    /// Accounts: `[w] config, [s] new authority`
+    AcceptAuthority { new_authority: Pubkey },
 }
 
 impl GateInstruction {
@@ -34,6 +45,7 @@ impl GateInstruction {
             Self::SetAuthority { new_authority } => (1, new_authority),
             Self::Activate { feature_id } => (2, feature_id),
             Self::Revoke { feature_id } => (3, feature_id),
+            Self::AcceptAuthority { new_authority } => (4, new_authority),
         };
         let mut data = Vec::with_capacity(33);
         data.push(tag);
@@ -52,6 +64,7 @@ impl GateInstruction {
             1 => Self::SetAuthority { new_authority: key },
             2 => Self::Activate { feature_id: key },
             3 => Self::Revoke { feature_id: key },
+            4 => Self::AcceptAuthority { new_authority: key },
             _ => return Err(ProgramError::InvalidInstructionData),
         })
     }
@@ -87,6 +100,20 @@ pub fn set_authority(authority: &Pubkey, new_authority: &Pubkey) -> Instruction 
             AccountMeta::new_readonly(*authority, true),
         ],
         data: GateInstruction::SetAuthority {
+            new_authority: *new_authority,
+        }
+        .pack(),
+    }
+}
+
+pub fn accept_authority(new_authority: &Pubkey) -> Instruction {
+    Instruction {
+        program_id: crate::id(),
+        accounts: vec![
+            AccountMeta::new(config_address().0, false),
+            AccountMeta::new_readonly(*new_authority, true),
+        ],
+        data: GateInstruction::AcceptAuthority {
             new_authority: *new_authority,
         }
         .pack(),
@@ -140,6 +167,7 @@ mod tests {
             GateInstruction::SetAuthority { new_authority: key },
             GateInstruction::Activate { feature_id: key },
             GateInstruction::Revoke { feature_id: key },
+            GateInstruction::AcceptAuthority { new_authority: key },
         ] {
             assert_eq!(GateInstruction::unpack(&ix.pack()).unwrap(), ix);
         }
@@ -149,6 +177,7 @@ mod tests {
     fn malformed_data_is_rejected() {
         assert!(GateInstruction::unpack(&[]).is_err());
         assert!(GateInstruction::unpack(&[2u8; 32]).is_err());
+        assert!(GateInstruction::unpack(&[5u8; 33]).is_err());
         assert!(GateInstruction::unpack(&[9u8; 33]).is_err());
     }
 
