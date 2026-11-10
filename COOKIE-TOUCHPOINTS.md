@@ -39,4 +39,4 @@ New files (no merge conflicts expected): `feature-set/src/cookie.rs`, `runtime/s
 
 | Release | Upstream base | Contents |
 |---|---|---|
-| `4.1.2-cookie.1` | `v4.1.2` (`182084b82aae88b1b0731540f63bf7416f27773a`) | C1: Cookie feature switches (alias table, runtime and tool hooks, `cookie-feature-gate` program) |
+| `4.1.2-cookie.1` | `v4.1.2` (`182084b82aae88b1b0731540f63bf7416f27773a`) | C1 feature switches (alias table, runtime and tool hooks, `cookie-feature-gate`) and the 4.1 program swaps (token trigger, hash-checked p-token and stake buffers) |
