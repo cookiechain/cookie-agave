@@ -22,9 +22,9 @@ Check this list at the start of every rebase onto a newer Agave release.
 | `runtime/src/bank.rs` | `apply_feature_activations`, the `upgrade_bpf_stake_program_to_v5` block | replaced by one call, `self.apply_cookie_program_swaps(&new_feature_activations)` | Cookie's program swaps read Cookie-controlled, hash-checked buffers | 4.1 swaps |
 | `runtime/src/bank/builtins/core_bpf_migration/mod.rs` | module list; `upgrade_core_bpf_program`, `upgrade_loader_v2_program_with_loader_v3_program` | `pub(crate) mod cookie;`; both become wrappers over new `_checked` variants that take an optional build hash; `dead_code` expectation adjusted | A swap refuses a buffer whose code does not match the expected hash | 4.1 swaps |
 | `runtime/src/bank/builtins/core_bpf_migration/source_buffer.rs` | `impl SourceBuffer` | adds `new_checked_optional_hash` | Same | 4.1 swaps |
-| `version/src/lib.rs` | `version!` macro | calls `cookie::detailed` | `solana --version` and `getVersion` show `4.1.2-cookie.1`. The gossip version stays 4.1.2 | 4.1.2-cookie.1 |
+| `version/src/client_ids.rs` | `ClientId::this_client` | ids 8 through 13 match current Agave (`Rakurai` through `Raiku`); `Cookie` is 14, and `this_client()` returns it | Gossip and `solana --version` show client `Cookie`. Id 8 is Rakurai on Agave main, so Cookie takes the next free id | 4.1.3 |
 
-New files (no merge conflicts expected): `feature-set/src/cookie.rs`, `runtime/src/cookie/`, `cli/src/cookie.rs`, `test-validator/src/cookie.rs`, `programs/cookie-feature-gate/`, `version/src/cookie.rs`, `COOKIE-RULES.md`, `COOKIE-TOUCHPOINTS.md`.
+New files (no merge conflicts expected): `feature-set/src/cookie.rs`, `runtime/src/cookie/`, `cli/src/cookie.rs`, `test-validator/src/cookie.rs`, `programs/cookie-feature-gate/`, `COOKIE-RULES.md`, `COOKIE-TOUCHPOINTS.md`.
 
 ## Known differences from Solana
 
@@ -33,6 +33,7 @@ New files (no merge conflicts expected): `feature-set/src/cookie.rs`, `runtime/s
 | `RpcClient::get_feature_activation_slot` (Rust `solana-rpc-client` library) | Does not see Cookie aliases | Not used anywhere in Agave; hooking it would add an `agave-feature-set` dependency to the published RPC client crate. Rust apps should use the CLI helpers' approach. |
 | `solana-genesis`, `local-cluster` | Do not see Cookie aliases | Only used to create new clusters and for tests. Cookie never resets genesis. |
 | Feature set ID | Differs from stock 4.1.2, because one Cookie-only feature is added | Expected. Consensus depends on active features, not on this ID |
+| Gossip client on a stock 4.1.2 node | A node on this release shows as version `4.1.3` and client `Unknown(14)` | Stock 4.1.2 does not know client id 14. Nodes on this release show client `Cookie` |
 | SIMD-0196 (`6M4oQ6eX…`) | Swaps Cookie's Loader v2 stake program from Cookie's buffer. Upstream's builtin migration was deleted after mainnet used it | Cookie's stake program was never a builtin |
 | SIMD-0490 (`STk5Xj8h…`) | Upgrades stake from Cookie's v5 buffer instead of `4EBQBjw1…` | Only upstream controls that buffer |
 
@@ -40,4 +41,4 @@ New files (no merge conflicts expected): `feature-set/src/cookie.rs`, `runtime/s
 
 | Release | Upstream base | Contents |
 |---|---|---|
-| `4.1.2-cookie.1` | `v4.1.2` (`182084b82aae88b1b0731540f63bf7416f27773a`) | C1 feature switches (alias table, runtime and tool hooks, `cookie-feature-gate`), the 4.1 program swaps (token trigger, hash-checked p-token and stake buffers), and `--version` reports `4.1.2-cookie.1` |
+| `4.1.2-cookie.1` | `v4.1.2` (`182084b82aae88b1b0731540f63bf7416f27773a`) | C1 feature switches and the 4.1 program swaps. Cargo version `4.1.3`, client `Cookie`. `solana --version`, `getVersion`, and gossip show `4.1.3` with client `Cookie` |
