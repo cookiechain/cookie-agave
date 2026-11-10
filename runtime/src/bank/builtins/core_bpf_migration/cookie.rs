@@ -15,19 +15,19 @@ use {
     ahash::AHashSet, log::error, solana_hash::Hash, solana_pubkey::Pubkey,
 };
 
-/// Buffer addresses are consensus constants. Replace each placeholder with the
-/// address of the matching keypair created in step 0.1 before building a
-/// release; `cookie_release_buffers_configured` fails until then.
+/// Buffer addresses are consensus constants: every validator must run a build
+/// with the same three. They are the keypairs created offline in plan step 0.2
+/// (10 Nov 2026); the buffers are written on chain at step 0.7.
 pub mod token_buffer {
-    solana_pubkey::declare_id!("CookieTokenBufferP1aceho1der111111111111111");
+    solana_pubkey::declare_id!("7anfKyfCz8krv8Jvmg9DLAjS9WvzfDY2XfBJZyLyoYBF");
 }
 
 pub mod stake_buffer {
-    solana_pubkey::declare_id!("CookieStakeBufferP1aceho1der111111111111111");
+    solana_pubkey::declare_id!("djJonZTCuwfU9hkuntGjLZeXf6bziS76PuwDJUfxqHm");
 }
 
 pub mod stake_v5_buffer {
-    solana_pubkey::declare_id!("CookieStakeV5BufferP1aceho1der1111111111111");
+    solana_pubkey::declare_id!("BYeWRbFpEi8wf5UCXypQJ9CvHh3UrfggqF6MYy1UuLCx");
 }
 
 /// SHA-256 of solana-program/token p-token@v1.0.0 `spl_p_token.so`, trailing
@@ -183,10 +183,10 @@ mod tests {
     const STAKE_5_SO: &str = "solana_stake_program-5.0.0.so";
 
     fn program_file(name: &str) -> Vec<u8> {
-        std::fs::read(format!(
-            "src/bank/builtins/core_bpf_migration/cookie_programs/{name}"
-        ))
-        .unwrap()
+        let path = format!("src/bank/builtins/core_bpf_migration/cookie_programs/{name}");
+        std::fs::read(&path).unwrap_or_else(|err| {
+            panic!("{path}: {err}. Download it with cookie-upgrade-plan's fetch_programs.sh")
+        })
     }
 
     fn trimmed_hash(elf: &[u8]) -> Hash {
