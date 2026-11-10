@@ -1,0 +1,23 @@
+[package]
+name = "cookie-feature-gate"
+description = "Cookie Chain feature switches, controlled by the Cookie Squads multisig"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+# Standalone on-chain program: not part of the Agave workspace.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+solana-program = "4.0.0"
+solana-system-interface = { version = "3.2.0", features = ["bincode"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

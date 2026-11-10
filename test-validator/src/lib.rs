@@ -1,4 +1,7 @@
 #![allow(clippy::arithmetic_side_effects)]
+// Cookie: --clone-feature-set sees Cookie feature aliases.
+mod cookie;
+
 use {
     agave_feature_set::{FEATURE_NAMES, FeatureSet, alpenglow, raise_cpi_nesting_limit_to_8},
     agave_snapshots::{
@@ -515,6 +518,7 @@ impl TestValidatorGenesis {
                     }
                 });
         }
+        cookie::keep_alias_activated_features(&mut self.deactivate_feature_set, rpc_client)?;
         Ok(self)
     }
 

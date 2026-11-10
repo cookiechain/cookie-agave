@@ -9,6 +9,7 @@ use {
             ComputeUnitConfig, UpdateComputeUnitLimitResult, WithComputeUnitConfig,
             simulate_and_update_compute_unit_limit,
         },
+        cookie::CookieFeatureAccounts,
         feature::{CliFeatureStatus, status_from_account},
     },
     agave_feature_set::{FEATURE_NAMES, FeatureSet},
@@ -3289,7 +3290,7 @@ async fn fetch_feature_set(
         .chunks(MAX_MULTIPLE_ACCOUNTS)
     {
         rpc_client
-            .get_multiple_accounts(feature_ids)
+            .get_feature_accounts(feature_ids)
             .await?
             .into_iter()
             .zip(feature_ids)
