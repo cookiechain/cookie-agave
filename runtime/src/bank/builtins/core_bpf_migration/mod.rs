@@ -1,3 +1,4 @@
+pub(crate) mod cookie;
 pub(crate) mod error;
 mod source_buffer;
 mod target_bpf_v2;
@@ -328,17 +329,39 @@ impl Bank {
     ///     );
     /// }
     /// ```
-    // #[expect(dead_code)] // Only used when an upgrade is configured.
+    #[cfg_attr(not(test), expect(dead_code))] // Only used when an upgrade is configured.
     pub(crate) fn upgrade_core_bpf_program(
         &mut self,
         core_bpf_program_address: &Pubkey,
         source_buffer_address: &Pubkey,
         datapoint_name: &'static str,
     ) -> Result<(), CoreBpfMigrationError> {
+        self.upgrade_core_bpf_program_checked(
+            core_bpf_program_address,
+            source_buffer_address,
+            None,
+            datapoint_name,
+        )
+    }
+
+    /// [`Bank::upgrade_core_bpf_program`], but when `verified_build_hash` is
+    /// set the upgrade is refused unless the buffer's ELF (trailing zeros
+    /// trimmed) hashes to it.
+    pub(crate) fn upgrade_core_bpf_program_checked(
+        &mut self,
+        core_bpf_program_address: &Pubkey,
+        source_buffer_address: &Pubkey,
+        verified_build_hash: Option<Hash>,
+        datapoint_name: &'static str,
+    ) -> Result<(), CoreBpfMigrationError> {
         datapoint_info!(datapoint_name, ("slot", self.slot, i64));
 
         let target = TargetCoreBpf::new_checked(self, core_bpf_program_address)?;
-        let source = SourceBuffer::new_checked(self, source_buffer_address)?;
+        let source = SourceBuffer::new_checked_optional_hash(
+            self,
+            source_buffer_address,
+            verified_build_hash,
+        )?;
 
         // Attempt serialization first before modifying the bank.
         let new_target_program_data_account =
@@ -414,11 +437,35 @@ impl Bank {
         allow_prefunded: bool,
         datapoint_name: &'static str,
     ) -> Result<(), CoreBpfMigrationError> {
+        self.upgrade_loader_v2_program_with_loader_v3_program_checked(
+            loader_v2_bpf_program_address,
+            source_buffer_address,
+            allow_prefunded,
+            None,
+            datapoint_name,
+        )
+    }
+
+    /// [`Bank::upgrade_loader_v2_program_with_loader_v3_program`], but when
+    /// `verified_build_hash` is set the upgrade is refused unless the buffer's
+    /// ELF (trailing zeros trimmed) hashes to it.
+    pub(crate) fn upgrade_loader_v2_program_with_loader_v3_program_checked(
+        &mut self,
+        loader_v2_bpf_program_address: &Pubkey,
+        source_buffer_address: &Pubkey,
+        allow_prefunded: bool,
+        verified_build_hash: Option<Hash>,
+        datapoint_name: &'static str,
+    ) -> Result<(), CoreBpfMigrationError> {
         datapoint_info!(datapoint_name, ("slot", self.slot, i64));
 
         let target =
             TargetBpfV2::new_checked(self, loader_v2_bpf_program_address, allow_prefunded)?;
-        let source = SourceBuffer::new_checked(self, source_buffer_address)?;
+        let source = SourceBuffer::new_checked_optional_hash(
+            self,
+            source_buffer_address,
+            verified_build_hash,
+        )?;
 
         // Attempt serialization first before modifying the bank.
         let new_target_program_account =

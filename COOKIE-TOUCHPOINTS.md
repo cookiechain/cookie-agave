@@ -18,6 +18,10 @@ Check this list at the start of every rebase onto a newer Agave release.
 | `cli/src/vote.rs` | imports; `process_show_vote_account` (timely vote credits lookup) | one import line; method name swap `.get_account_with_commitment` to `.get_feature_account_with_commitment` | Same | C1 |
 | `test-validator/src/lib.rs` | top of file; `clone_feature_set` | `mod cookie;` and one added call after the loop | `--clone-feature-set` copies Cookie alias activations | C1 |
 | `ledger-tool/src/main.rs` | `create-snapshot` feature-gate deactivation | look up and clear the feature via `cookie_feature_account` | Emergency feature deactivation also works for alias-activated features | C1 |
+| `feature-set/src/lib.rs` | end of `FEATURE_NAMES` | one chained line, `.chain(cookie::feature_names())` | Cookie-only features (the token trigger) are known features with an alias, without editing upstream's list | 4.1 swaps |
+| `runtime/src/bank.rs` | `apply_feature_activations`, the `upgrade_bpf_stake_program_to_v5` block | replaced by one call, `self.apply_cookie_program_swaps(&new_feature_activations)` | Cookie's program swaps read Cookie-controlled, hash-checked buffers | 4.1 swaps |
+| `runtime/src/bank/builtins/core_bpf_migration/mod.rs` | module list; `upgrade_core_bpf_program`, `upgrade_loader_v2_program_with_loader_v3_program` | `pub(crate) mod cookie;`; both become wrappers over new `_checked` variants that take an optional build hash; `dead_code` expectation adjusted | A swap refuses a buffer whose code does not match the expected hash | 4.1 swaps |
+| `runtime/src/bank/builtins/core_bpf_migration/source_buffer.rs` | `impl SourceBuffer` | adds `new_checked_optional_hash` | Same | 4.1 swaps |
 
 New files (no merge conflicts expected): `feature-set/src/cookie.rs`, `runtime/src/cookie/`, `cli/src/cookie.rs`, `test-validator/src/cookie.rs`, `programs/cookie-feature-gate/`, `COOKIE-RULES.md`, `COOKIE-TOUCHPOINTS.md`.
 
@@ -27,6 +31,9 @@ New files (no merge conflicts expected): `feature-set/src/cookie.rs`, `runtime/s
 |---|---|---|
 | `RpcClient::get_feature_activation_slot` (Rust `solana-rpc-client` library) | Does not see Cookie aliases | Not used anywhere in Agave; hooking it would add an `agave-feature-set` dependency to the published RPC client crate. Rust apps should use the CLI helpers' approach. |
 | `solana-genesis`, `local-cluster` | Do not see Cookie aliases | Only used to create new clusters and for tests. Cookie never resets genesis. |
+| Feature set ID | Differs from stock 4.1.2, because one Cookie-only feature is added | Expected. Consensus depends on active features, not on this ID |
+| SIMD-0196 (`6M4oQ6eX…`) | Swaps Cookie's Loader v2 stake program from Cookie's buffer. Upstream's builtin migration was deleted after mainnet used it | Cookie's stake program was never a builtin |
+| SIMD-0490 (`STk5Xj8h…`) | Upgrades stake from Cookie's v5 buffer instead of `4EBQBjw1…` | Only upstream controls that buffer |
 
 ## Release history
 

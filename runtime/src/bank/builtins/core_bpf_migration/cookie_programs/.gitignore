@@ -1,0 +1,4 @@
+# Program files the cookie swap tests read. Download them with
+# cookie-upgrade-plan's plans/4.1/scripts/fetch_programs.sh; never commit them.
+*
+!.gitignore

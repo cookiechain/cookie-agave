@@ -2620,6 +2620,7 @@ pub static FEATURE_NAMES: LazyLock<AHashMap<Pubkey, &'static str>> = LazyLock::n
     ]
     .iter()
     .cloned()
+    .chain(cookie::feature_names()) // Cookie: Cookie-only features (see cookie.rs).
     .collect()
 });
 
