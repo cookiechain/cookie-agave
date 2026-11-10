@@ -2,13 +2,24 @@
 
 use {
     super::feature_alias::*,
-    crate::{bank::Bank, bank_forks::BankForks, genesis_utils::create_genesis_config},
+    crate::{
+        bank::Bank,
+        bank_forks::BankForks,
+        genesis_utils::create_genesis_config,
+        runtime_config::RuntimeConfig,
+        snapshot_bank_utils::{bank_from_snapshot_archives, bank_to_full_snapshot_archive},
+        snapshot_utils::create_tmp_accounts_dir_for_tests,
+    },
     agave_feature_set::{self as feature_set, FEATURE_NAMES},
+    agave_snapshots::snapshot_config::SnapshotConfig,
     solana_account::{AccountSharedData, ReadableAccount},
+    solana_accounts_db::accounts_db::ACCOUNTS_DB_CONFIG_FOR_TESTING,
     solana_feature_gate_interface::{self as feature, Feature},
+    solana_hash::Hash,
     solana_leader_schedule::SlotLeader,
     solana_pubkey::Pubkey,
     std::sync::{Arc, RwLock},
+    tempfile::TempDir,
 };
 
 /// A real upstream feature that is not denylisted, used as the test subject.
@@ -209,4 +220,59 @@ fn lamports_at_upstream_address_without_alias_behave_as_stock() {
     );
     let (bank1, _) = next_epoch(bank0);
     assert!(!bank1.feature_set.is_active(&id));
+}
+
+/// A validator that restarts from a snapshot rebuilds its feature set from
+/// accounts. A feature already activated through its alias must stay active
+/// at its original slot even if someone holding the feature's own key later
+/// creates a pending account at the upstream address. Otherwise a restarted
+/// validator would disagree with one that kept running.
+#[test]
+fn activated_alias_survives_a_restart_with_a_pending_upstream_account() {
+    let id = subject();
+    let alias = *alias_of(&id).unwrap();
+    let mut info = create_genesis_config(1_000_000_000_000);
+    info.genesis_config.accounts.remove(&id);
+    let (bank0, _forks) =
+        Bank::new_for_tests(&info.genesis_config).wrap_with_bank_forks_for_tests();
+    bank0.store_account_and_update_capitalization(&alias, &pending_feature_account());
+    let (bank1, slot) = next_epoch(bank0);
+    assert_eq!(bank1.feature_set.activated_slot(&id), Some(slot));
+
+    bank1.store_account_and_update_capitalization(&id, &pending_feature_account());
+    bank1.fill_bank_with_ticks_for_tests();
+    bank1.set_block_id(Some(Hash::default()));
+
+    let (_accounts_tmp, accounts_dir) = create_tmp_accounts_dir_for_tests();
+    let bank_snapshots_dir = TempDir::new().unwrap();
+    let full_snapshot_archives_dir = TempDir::new().unwrap();
+    let incremental_snapshot_archives_dir = TempDir::new().unwrap();
+    let snapshot_config = SnapshotConfig {
+        full_snapshot_archives_dir: full_snapshot_archives_dir.path().to_path_buf(),
+        incremental_snapshot_archives_dir: incremental_snapshot_archives_dir.path().to_path_buf(),
+        bank_snapshots_dir: bank_snapshots_dir.path().to_path_buf(),
+        ..SnapshotConfig::default()
+    };
+    let archive = bank_to_full_snapshot_archive(&snapshot_config, &bank1).unwrap();
+    let restarted = bank_from_snapshot_archives(
+        &[accounts_dir],
+        &archive,
+        None,
+        &snapshot_config,
+        &info.genesis_config,
+        &RuntimeConfig::default(),
+        None,
+        Some(*bank1.leader()),
+        None,
+        false,
+        false,
+        false,
+        ACCOUNTS_DB_CONFIG_FOR_TESTING,
+        None,
+        Arc::default(),
+    )
+    .unwrap();
+
+    assert_eq!(restarted.feature_set.activated_slot(&id), Some(slot));
+    assert_eq!(activated_at(&restarted, &alias), Some(slot));
 }

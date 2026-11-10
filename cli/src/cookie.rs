@@ -2,8 +2,10 @@
 //!
 //! Features activated through the Cookie feature switches live at a Cookie
 //! alias address (see `agave_feature_set::cookie`). These methods have the
-//! same contract as the `RpcClient` calls they stand in for, but fall back to
-//! the alias when a feature's own address holds no feature account. That keeps
+//! same contract as the `RpcClient` calls they stand in for, but use the alias
+//! when it records the feature more strongly than the feature's own address
+//! (activated beats pending beats no feature account; see
+//! `agave_feature_set::cookie::FeatureRecord`), exactly as the validator does. That keeps
 //! `solana feature status`, `feature activate` and every command that checks
 //! feature status behaving exactly as on Solana.
 //!
@@ -11,7 +13,9 @@
 //! `.get_account(feature_id)` becomes `.get_feature_account(feature_id)`.
 
 use {
-    agave_feature_set::cookie::{alias_of, fill_from_aliases, missing_aliases},
+    agave_feature_set::cookie::{
+        FeatureRecord, alias_of, alias_wins, fill_from_aliases, missing_aliases,
+    },
     solana_account::Account,
     solana_commitment_config::CommitmentConfig,
     solana_feature_gate_interface::from_account,
@@ -46,15 +50,10 @@ impl CookieFeatureAccounts for RpcClient {
         feature_ids: &[Pubkey],
     ) -> ClientResult<Vec<Option<Account>>> {
         let mut accounts = self.get_multiple_accounts(feature_ids).await?;
-        let (positions, aliases) = missing_aliases(feature_ids, &accounts, is_feature_account);
+        let (positions, aliases) = missing_aliases(feature_ids, &accounts, record);
         if !aliases.is_empty() {
             let alias_accounts = self.get_multiple_accounts(&aliases).await?;
-            fill_from_aliases(
-                &mut accounts,
-                &positions,
-                alias_accounts,
-                is_feature_account,
-            );
+            fill_from_aliases(&mut accounts, &positions, alias_accounts, record);
         }
         Ok(accounts)
     }
@@ -79,14 +78,20 @@ impl CookieFeatureAccounts for RpcClient {
         let mut response = self
             .get_account_with_commitment(feature_id, commitment)
             .await?;
-        if !response.value.as_ref().is_some_and(is_feature_account) {
+        let upstream = response
+            .value
+            .as_ref()
+            .map_or(FeatureRecord::NotAFeature, record);
+        if upstream != FeatureRecord::Activated {
             if let Some(alias) = alias_of(feature_id) {
                 let alias_account = self
                     .get_account_with_commitment(alias, commitment)
                     .await?
-                    .value
-                    .filter(is_feature_account);
-                if alias_account.is_some() {
+                    .value;
+                let alias_record = alias_account
+                    .as_ref()
+                    .map_or(FeatureRecord::NotAFeature, record);
+                if alias_wins(upstream, alias_record) {
                     response.value = alias_account;
                 }
             }
@@ -95,8 +100,16 @@ impl CookieFeatureAccounts for RpcClient {
     }
 }
 
+fn record(account: &Account) -> FeatureRecord {
+    match from_account(account) {
+        None => FeatureRecord::NotAFeature,
+        Some(feature) if feature.activated_at.is_some() => FeatureRecord::Activated,
+        Some(_) => FeatureRecord::Pending,
+    }
+}
+
 fn is_feature_account(account: &Account) -> bool {
-    from_account(account).is_some()
+    record(account) != FeatureRecord::NotAFeature
 }
 
 /// `solana feature revoke` withdraws a pending feature by signing as the
