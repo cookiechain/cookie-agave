@@ -60,7 +60,7 @@ Cookie must feel seamless: users, operators and tools should not be able to tell
 ## 9. Releases
 
 - Branch per upstream version: `cookie/4.1.2`, later `cookie/4.3.x`.
-- Version string `<upstream>-cookie.<n>`, for example `4.1.2-cookie.1`.
+- Cargo version follows Agave's patch bump. The client id is `Cookie` (`version/src/client_ids.rs`), so `solana --version` and gossip show `4.1.3` with `client:Cookie`. Git tags stay `<upstream>-cookie.<n>`, for example `4.1.2-cookie.1`.
 - Portable builds (no `-C target-cpu=native`), published on GitHub with a SHA-256 checksum that is also posted separately in the operators' channel.
 - Keep Anza's Apache 2.0 licence and notices.
 

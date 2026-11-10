@@ -14,10 +14,6 @@ pub enum Prerelease {
     ReleaseCandidate(u16),
     Beta(u16),
     Alpha(u16),
-    /// `cookie.N` in `<upstream>-cookie.N`. Patch stays the upstream patch
-    /// (`4.1.2-cookie.1`). On the gossip wire this is packed as stable; the
-    /// release number rides in the client id. See `crate::cookie`.
-    Cookie(u16),
 }
 
 impl Prerelease {
@@ -30,7 +26,7 @@ impl Prerelease {
     const IDENTIFIER_ALPHA: &str = "alpha";
 
     pub fn patch_is_valid(&self, patch: u16) -> bool {
-        matches!(self, Self::Stable | Self::Cookie(_)) || patch == 0
+        *self == Self::Stable || patch == 0
     }
 }
 
@@ -48,7 +44,6 @@ impl fmt::Display for Prerelease {
             Self::ReleaseCandidate(rc) => (Self::IDENTIFIER_RELEASE_CANDIDATE, rc),
             Self::Beta(beta) => (Self::IDENTIFIER_BETA, beta),
             Self::Alpha(alpha) => (Self::IDENTIFIER_ALPHA, alpha),
-            Self::Cookie(cookie) => (crate::cookie::IDENTIFIER, cookie),
         };
         write!(f, "{identifier}.{number}")
     }
@@ -78,10 +73,6 @@ impl FromStr for Prerelease {
                 Self::IDENTIFIER_RELEASE_CANDIDATE => Ok(Self::ReleaseCandidate(num)),
                 Self::IDENTIFIER_BETA => Ok(Self::Beta(num)),
                 Self::IDENTIFIER_ALPHA => Ok(Self::Alpha(num)),
-                crate::cookie::IDENTIFIER if crate::cookie::wire_client(num).is_ok() => {
-                    Ok(Self::Cookie(num))
-                }
-                crate::cookie::IDENTIFIER => Err(ParsePrereleaseError::NumericPartNotAU16),
                 _ => Err(ParsePrereleaseError::UnknownIdentifier),
             }
         }
@@ -123,9 +114,7 @@ impl PackedMinor {
             return Err(PackedMinorPackError::InvalidPatchForPrerelease);
         }
         let (prerelease_encode_tag, patch) = match *prerelease {
-            // Cookie keeps the stable tag. The release number is not stored
-            // in these bits; `Version::serialize` writes it into the client id.
-            Prerelease::Stable | Prerelease::Cookie(_) => (Prerelease::ENCODE_TAG_STABLE, patch),
+            Prerelease::Stable => (Prerelease::ENCODE_TAG_STABLE, patch),
             Prerelease::ReleaseCandidate(rc) => (Prerelease::ENCODE_TAG_RELEASE_CANDIDATE, rc),
             Prerelease::Beta(beta) => (Prerelease::ENCODE_TAG_BETA, beta),
             Prerelease::Alpha(alpha) => (Prerelease::ENCODE_TAG_ALPHA, alpha),
@@ -169,7 +158,7 @@ pub struct Version {
 }
 
 impl Version {
-    pub(crate) fn new_from_parts(
+    fn new_from_parts(
         major: u16,
         minor: u16,
         patch: u16,
@@ -314,12 +303,7 @@ impl Serialize for Version {
 
         let (packed_minor, patch) = PackedMinor::try_pack(minor, patch, prerelease)
             .map_err(|err| S::Error::custom(format!("{err:?}")))?;
-        let client = match prerelease {
-            Prerelease::Cookie(n) => {
-                crate::cookie::wire_client(*n).map_err(|err| S::Error::custom(err))?
-            }
-            _ => u16::try_from(client.clone()).map_err(S::Error::custom)?,
-        };
+        let client = u16::try_from(client.clone()).map_err(S::Error::custom)?;
 
         let serialized_version = SerializedVersion {
             major,
@@ -351,12 +335,7 @@ impl<'de> Deserialize<'de> for Version {
         let (minor, patch, prerelease) = packed_minor
             .try_unpack(patch)
             .map_err(|err| D::Error::custom(format!("{err:?}")))?;
-        let prerelease = crate::cookie::prerelease_from_wire(client, prerelease);
-        let client = if matches!(prerelease, Prerelease::Cookie(_)) {
-            ClientId::Agave
-        } else {
-            ClientId::from(client)
-        };
+        let client = ClientId::from(client);
 
         Ok(Version {
             major,
@@ -711,7 +690,7 @@ mod tests {
             Version::new_from_parts(0, 0, 0, 0, 0, ClientId::this_client(), Prerelease::Stable);
         assert_eq!(
             version.as_detailed_string(),
-            "0.0.0 (src:00000000; feat:00000000, client:Agave)",
+            "0.0.0 (src:00000000; feat:00000000, client:Cookie)",
         );
 
         let version = Version::new_from_parts(
@@ -725,7 +704,7 @@ mod tests {
         );
         assert_eq!(
             version.as_detailed_string(),
-            "0.0.0-rc.0 (src:00000000; feat:00000000, client:Agave)",
+            "0.0.0-rc.0 (src:00000000; feat:00000000, client:Cookie)",
         );
     }
 }
